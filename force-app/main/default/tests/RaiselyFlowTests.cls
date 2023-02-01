@@ -6,7 +6,6 @@ public class RaiselyFlowTests {
 
         // TODO!!!: Figure out a way to generally reference the Donation Opportunity Record Type
         // Right now, we have to go manually edit the flow for each org to get the org generated ID
-        //Id donationRecordTypeId = Schema.SObjectType.Opportunity.getRecordTypeInfosByName().get('Donation').getRecordTypeId();
         String donationOppRecordTypeId = '012Dn000000N15oIAC';
 
         // Crate a Campaign Record for our donation
@@ -72,7 +71,8 @@ public class RaiselyFlowTests {
                                             npsp__Acknowledgment_Date__c,
                                             npsp__Acknowledgment_Status__c,
                                             npsp__Primary_Contact__c,
-                                            RecordType.DeveloperName
+                                            RecordType.DeveloperName,
+                                            npe01__Do_Not_Automatically_Create_Payment__c
                                             FROM Opportunity];
         system.assertEquals(1, opportunities.size());
         Opportunity opp = opportunities.get(0);
@@ -95,10 +95,12 @@ public class RaiselyFlowTests {
         system.assertEquals(raisleyData.Transaction_Date__c, opp.npsp__Acknowledgment_Date__c);
         system.assertEquals(contact.Id, opp.npsp__Primary_Contact__c);            
         
-        // Verify the Payment record was created and then updated properly
-        List<Payment> payments = [SELECT Id FROM Payment];                                  
-        system.assertEquals(1, payments.size(), 'The Flow did not create a Payment record');
-        Payment payment = payments.get(0);
+        if(!opp.npe01__Do_Not_Automatically_Create_Payment__c) {
+            // Verify the Payment record was created and then updated properly
+            List<Payment> payments = [SELECT Id FROM Payment];                                  
+            system.assertEquals(1, payments.size(), 'The Flow did not create a Payment record');
+            Payment payment = payments.get(0);            
+        }
     }
 
 }
