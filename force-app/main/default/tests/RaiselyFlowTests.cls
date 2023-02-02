@@ -97,9 +97,11 @@ public class RaiselyFlowTests {
         
         if(!opp.npe01__Do_Not_Automatically_Create_Payment__c) {
             // Verify the Payment record was created and then updated properly
-            List<Payment> payments = [SELECT Id FROM Payment];                                  
+            List<npe01__OppPayment__c> payments = [SELECT Id FROM npe01__OppPayment__c];                                  
             system.assertEquals(1, payments.size(), 'The Flow did not create a Payment record');
-            Payment payment = payments.get(0);            
+            npe01__OppPayment__c payment = payments.get(0);  
+            system.assertEquals(raisleyData.Receipt_ID__c, payment.npe01__Check_Reference_Number__c);
+            system.assertEquals(raisleyData.Payment_Method__c, payment.npe01__Payment_Method__c);          
         }
     }
 
