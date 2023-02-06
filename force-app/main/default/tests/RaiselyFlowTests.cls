@@ -56,16 +56,14 @@ public class RaiselyFlowTests {
         system.assertEquals(contact.Id, opp.npsp__Primary_Contact__c);     
         system.assertEquals('Acknowledged', opp.npsp__Acknowledgment_Status__c);       
         
-        if(!opp.npe01__Do_Not_Automatically_Create_Payment__c) {
-            // Verify the Payment record was created and then updated properly
-            List<npe01__OppPayment__c> payments = [SELECT Id, npe01__Check_Reference_Number__c,  
-                                                    npe01__Payment_Method__c 
-                                                    FROM npe01__OppPayment__c];                                  
-            system.assertEquals(1, payments.size(), 'The Flow did not create a Payment record');
-            npe01__OppPayment__c payment = payments.get(0);  
-            system.assertEquals(raiselyData.Receipt_ID__c, payment.npe01__Check_Reference_Number__c);
-            system.assertEquals(raiselyData.Payment_Method__c, payment.npe01__Payment_Method__c);          
-        }
+        // Verify the Payment record was created and then updated properly
+        List<npe01__OppPayment__c> payments = [SELECT Id, npe01__Check_Reference_Number__c,  
+                                                npe01__Payment_Method__c 
+                                                FROM npe01__OppPayment__c];                                  
+        system.assertEquals(1, payments.size(), 'The Flow did not create a Payment record');
+        npe01__OppPayment__c payment = payments.get(0);  
+        system.assertEquals(raiselyData.Receipt_ID__c, payment.npe01__Check_Reference_Number__c);
+        system.assertEquals(raiselyData.Payment_Method__c, payment.npe01__Payment_Method__c);          
     }
 
     @isTest
@@ -75,11 +73,7 @@ public class RaiselyFlowTests {
         
         raiselyData.Processing__c = 'RECURRING';
 
-        // The flow trigger happens after insert of the record, so we put the start/stop test methods here to make sure 
-        // that the flow is done before we validate the data that was created. I am not 100% sure those calls are necessary.
-        Test.startTest();
         insert raiselyData;
-        Test.stopTest();
 
         Contact contact = VerifyNewContact(raiselyData);
 
@@ -146,17 +140,79 @@ public class RaiselyFlowTests {
         system.assertEquals(raiselyData.CampaignID__c, recurringDonation.npe03__Recurring_Donation_Campaign__c);
         system.assertEquals(String.valueOf(Date.today().day()), recurringDonation.npsp__Day_of_Month__c);
 
-        if(!opp.npe01__Do_Not_Automatically_Create_Payment__c) {
-            // Verify that all 12 Payment records were created and then updated properly
-            List<npe01__OppPayment__c> payments = [SELECT 
-                                                    Id, npe01__Check_Reference_Number__c,
-                                                    npe01__Payment_Method__c
-                                                    FROM npe01__OppPayment__c];                                  
-            system.assertEquals(12, payments.size(), 'The Flow did not create the Payment records');
-            npe01__OppPayment__c payment = payments.get(0);             
-            system.assertEquals(raiselyData.Receipt_ID__c, payment.npe01__Check_Reference_Number__c);
-            system.assertEquals(raiselyData.Payment_Method__c, payment.npe01__Payment_Method__c);          
-        } 
+        // Verify that all 12 Payment records were created and then updated properly
+        List<npe01__OppPayment__c> payments = [SELECT 
+                                                Id, npe01__Check_Reference_Number__c,
+                                                npe01__Payment_Method__c,
+                                                Payment_Status__c
+                                                FROM npe01__OppPayment__c];                                  
+        system.assertEquals(12, payments.size(), 'The Flow did not create the Payment records');         
+            
+        // Now check the rest of the Payments to see if they are "Unpaid"
+        for(Integer i = 0; i < payments.size(); i++) {
+
+            npe01__OppPayment__c payment = payments.get(i);
+
+            if(i == 0) {
+                system.assertEquals('Paid', payment.Payment_Status__c);
+                system.assertEquals(raiselyData.Receipt_ID__c, payment.npe01__Check_Reference_Number__c);
+                system.assertEquals(raiselyData.Payment_Method__c, payment.npe01__Payment_Method__c); 
+            } else {
+                system.assertEquals('Unpaid', payment.Payment_Status__c);
+                system.assertEquals(null, payment.npe01__Check_Reference_Number__c);
+                system.assertEquals(null, payment.npe01__Payment_Method__c); 
+            }
+        }
+    }
+
+    @isTest
+    public static void ExistingRecurringDonation(){
+
+        Get_Raisely_Data__c raiselyData1 = GenerateRaiselyRecord();
+        Get_Raisely_Data__c raiselyData2 = GenerateRaiselyRecord();
+        
+        raiselyData1.Processing__c = 'RECURRING';
+        raiselyData2.Processing__c = 'RECURRING';
+
+        // Insert the first raisely record, then update all of the opportunities to look like they happened a month ago.
+        insert raiselyData1;
+
+        // Loop through all of the Opportunity records that were created and set them back a month
+        // This will make the second run of the flow think that it is time to charge the second Opportunity/Payment
+        List<Opportunity> opps = [SELECT Id, CloseDate FROM Opportunity];
+        for(Opportunity opp : opps) {
+            opp.CloseDate = opp.CloseDate.addMonths(-1);
+        }
+        update opps;
+
+        insert raiselyData2;
+
+        // Verify that all 12 Payment records were created and then updated properly
+        List<npe01__OppPayment__c> payments = [SELECT 
+                                                Id, npe01__Check_Reference_Number__c,
+                                                npe01__Payment_Method__c,
+                                                Payment_Status__c
+                                                FROM npe01__OppPayment__c];                                  
+        system.assertEquals(12, payments.size(), 'The Flow did not create the Payment records');         
+            
+        // Now check the rest of the Payments to see if they are "Unpaid"
+        for(Integer i = 0; i < payments.size(); i++) {
+
+            npe01__OppPayment__c payment = payments.get(i);
+
+            // We expect that the first two payment records have a "Paid" payment status
+            // and receipt information. This is because we have triggered the flow twice
+            // for this subscription.
+            if(i < 2) {
+                system.assertEquals('Paid', payment.Payment_Status__c);
+                system.assertEquals(raiselyData1.Receipt_ID__c, payment.npe01__Check_Reference_Number__c);
+                system.assertEquals(raiselyData1.Payment_Method__c, payment.npe01__Payment_Method__c); 
+            } else {
+                system.assertEquals('Unpaid', payment.Payment_Status__c);
+                system.assertEquals(null, payment.npe01__Check_Reference_Number__c);
+                system.assertEquals(null, payment.npe01__Payment_Method__c); 
+            }
+        }
     }
 
     private static Get_Raisely_Data__c GenerateRaiselyRecord() {
@@ -197,9 +253,9 @@ public class RaiselyFlowTests {
     private static Contact VerifyNewContact(Get_Raisely_Data__c raiselyData) {
          
         // Verify the Contact was created correctly
-         List<Contact> contacts = [SELECT Id, Email, FirstName, LastName, LeadSource, 
-         MobilePhone, Newsletter_Opt_In__c, Type_of_Contact__c 
-         FROM Contact];
+        List<Contact> contacts = [SELECT Id, Email, FirstName, LastName, LeadSource, 
+        MobilePhone, Newsletter_Opt_In__c, Type_of_Contact__c 
+        FROM Contact];
                 
         system.assertEquals(1, contacts.size());
         Contact contact = contacts.get(0);                                
